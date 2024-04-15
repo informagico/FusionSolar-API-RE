@@ -1,0 +1,18 @@
+{
+  "name": "fusionsolar-api-re",
+  "version": "1.0.0",
+  "description": "Huawei FusionSolar API based on Reverse Engineering",
+  "main": "src/app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ajax": "^0.0.4",
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "jsrsasign": "^11.1.0",
+    "jsrsasign-util": "^1.0.5"
+  }
+}
