@@ -119,6 +119,24 @@ function getSecureRandom() {
 	return result;
 }
 
+async function axiosPost(URL, loginUserInfo) {
+	axios
+		.post(process.env.HFS_BASE_ADDRESS + URL,
+			loginUserInfo,
+			{
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				withCredentials: true
+			})
+		.then(response =>
+			console.log(response)
+		)
+		.catch(error =>
+			console.log(error)
+		);
+}
+
 async function main() {
 	const result = await getPubKey()
 	var data = initLoginUserInfo()
@@ -143,8 +161,8 @@ async function main() {
 			+ getSecureRandom();
 	}
 
-	// var loginUserInfo = JSON.stringify(data);
-	// ajaxPost(URL, loginUserInfo, true);
+	var loginUserInfo = JSON.stringify(data);
+	await axiosPost(URL, loginUserInfo);
 }
 
 main()
