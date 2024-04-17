@@ -9,10 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "ajax": "^0.0.4",
     "axios": "^1.6.8",
     "dotenv": "^16.4.5",
-    "jsrsasign": "^11.1.0",
-    "jsrsasign-util": "^1.0.5"
+    "jsrsasign": "^10.5.25"
   }
 }

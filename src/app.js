@@ -1,6 +1,7 @@
 const axios = require('axios');
 require('dotenv').config()
 const rs = require('jsrsasign');
+const crypto = require('crypto').webcrypto;
 
 function initParam(submitUserName, nationCode) {
 	// var orgName = submitUserName ? encodeURIComponent(transfer($("#organization").val())) : '';
@@ -108,6 +109,16 @@ async function getPubKey() {
 	return response.data;
 }
 
+function getSecureRandom() {
+	var arr = new Uint8Array(16);
+	crypto.getRandomValues(arr);
+	var result = '';
+	for (var i = 0; i < arr.length; i++) {
+		result = result + arr[i].toString(16);
+	}
+	return result;
+}
+
 async function main() {
 	const result = await getPubKey()
 	var data = initLoginUserInfo()
@@ -120,10 +131,20 @@ async function main() {
 			var currntValue = valueEncode.substr(i * 270, 270);
 			var encryptValueCurrent = rs.KJUR.crypto.Cipher.encrypt(currntValue, pubKey, "RSAOAEP384");
 			encryptValue = encryptValue == "" ? "" : encryptValue + "00000001";
-			encryptValue = encryptValue + hextob64(encryptValueCurrent);
+			encryptValue = encryptValue + rs.hextob64(encryptValueCurrent);
 		}
 		data.password = encryptValue + result.version;
 	}
+
+	var URL = '/unisso/v2/validateUser.action';
+	if (result.enableEncrypt) {
+		URL = '/unisso/v3/validateUser.action'
+			+ "?timeStamp=" + result.timeStamp + "&nonce="
+			+ getSecureRandom();
+	}
+
+	// var loginUserInfo = JSON.stringify(data);
+	// ajaxPost(URL, loginUserInfo, true);
 }
 
 main()
