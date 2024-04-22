@@ -28,72 +28,6 @@ function initParam(submitUserName, nationCode) {
 	}
 }
 
-function submitData(submitUserName, nationCode, multiregion) {
-	// preSubmit()
-	var params = initParam(submitUserName, nationCode);
-	var orgName = params.orgName;
-	var usernameInp = params.usernameInp;
-	var valueInp = params.valueInp;
-	var verifycodeInp = params.verifycodeInp;
-	var search = params.search;
-	$.ajax({
-		type: 'GET',
-		url: "/unisso/pubkey",
-		contentType: "application/json",
-		dataType: "json",
-		success: function (result, request) {
-			if (result) {
-				var data = initLoginUserInfo(orgName, usernameInp, valueInp, verifycodeInp, multiregion);
-				if (result.enableEncrypt) {
-					var pubKey = KEYUTIL.getKey(result.pubKey);
-					var valueEncode = encodeURIComponent(valueInp);
-					var encryptValue = "";
-					for (var i = 0; i < valueEncode.length / 270; i++) {
-						var currntValue = valueEncode.substr(i * 270, 270);
-						var encryptValueCurrent = KJUR.crypto.Cipher.encrypt(currntValue, pubKey, "RSAOAEP384");
-						encryptValue = encryptValue == "" ? "" : encryptValue + "00000001";
-						encryptValue = encryptValue + hextob64(encryptValueCurrent);
-					}
-					data.password = encryptValue + result.version;
-				}
-				if ($('#loginWithMessage').is(':visible')) {
-					if (search === "") {
-						search = "?step=phoneAndSmsLogin";
-					} else {
-						search = search + "&step=phoneAndSmsLogin";
-					}
-					data = dealLoginUserInfo(result, data, nationCodeSelect)
-				}
-				var URL = '/unisso/v2/validateUser.action' + search;
-				if (result.enableEncrypt) {
-					if (search === "") {
-						URL = '/unisso/v3/validateUser.action'
-							+ "?timeStamp=" + result.timeStamp + "&nonce="
-							+ getSecureRandom();
-					} else {
-						URL = '/unisso/v3/validateUser.action' + search
-							+ "&timeStamp=" + result.timeStamp + "&nonce="
-							+ getSecureRandom();
-					}
-				}
-			} else {
-				var data = initLoginUserInfo(orgName, usernameInp, valueInp, verifycodeInp, multiregion);
-				if ($('#loginWithMessage').is(':visible')) {
-					search = search + "&step=phoneAndSmsLogin";
-					data = dealLoginUserInfo(result, data, nationCodeSelect)
-				}
-				var URL = '/unisso/validateUser.action' + search;
-			}
-			var loginUserInfo = JSON.stringify(data);
-			ajaxPost(URL, loginUserInfo, true);
-		},
-		error: function (xhr, ajaxOptions, thrownError) {
-			enableBtn();
-			showErrorMessage(connectionErrorMsg);
-		}
-	});
-}
-
 function initLoginUserInfo() {
 	return {
 		"organizationName": process.env.HFS_ORG_NAME || undefined,
@@ -119,28 +53,12 @@ function getSecureRandom() {
 	return result;
 }
 
-async function axiosPost(URL, loginUserInfo) {
-	axios
-		.post(process.env.HFS_BASE_ADDRESS + URL,
-			loginUserInfo,
-			{
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				withCredentials: true
-			})
-		.then(response =>
-			console.log(response)
-		)
-		.catch(error =>
-			console.log(error)
-		);
-}
-
 async function main() {
+	// get publick key for user data encryption
 	const result = await getPubKey()
-	var data = initLoginUserInfo()
 
+	// encrypt user data with public key
+	var data = initLoginUserInfo()
 	if (result.enableEncrypt) {
 		var pubKey = rs.KEYUTIL.getKey(result.pubKey);
 		var valueEncode = encodeURIComponent(data.password);
@@ -154,6 +72,7 @@ async function main() {
 		data.password = encryptValue + result.version;
 	}
 
+	// validate user
 	var URL = '/unisso/v2/validateUser.action';
 	if (result.enableEncrypt) {
 		URL = '/unisso/v3/validateUser.action'
@@ -162,7 +81,36 @@ async function main() {
 	}
 
 	var loginUserInfo = JSON.stringify(data);
-	await axiosPost(URL, loginUserInfo);
+
+	var axiosResult = await axios.get(process.env.HFS_BASE_ADDRESS + '/rest/pvms/web/publicapp/v1/download-qr-code?appType=3&sizeType=1');
+	console.log(axiosResult);
+
+	var cookies = axiosResult.headers['set-cookie'][0];
+
+	axiosResult = await axios
+		.post(process.env.HFS_BASE_ADDRESS + URL,
+			loginUserInfo,
+			{
+				headers: {
+					"Content-Type": 'application/json',
+					"Cookie": cookies
+				}
+			});
+	console.log(axiosResult);
+
+	cookies += "; " + axiosResult.headers['set-cookie'][0];
+
+	axiosResult = await axios.get(process.env.HFS_BASE_ADDRESS + axiosResult.data.respMultiRegionName[1], {
+		headers: {
+			"Cookie": cookies
+		}
+	});
+	console.log(axiosResult);
+
+	// TODO: understand why response does not contain "dp-session" set-cookie header.
+	// maybe issues on the origin?
+
+	await getPlantsList();
 }
 
 main()
