@@ -1,32 +1,18 @@
 const axios = require("axios");
+const { config } = require("dotenv");
 require("dotenv").config();
 const rs = require("jsrsasign");
 const crypto = require("crypto").webcrypto;
 
-function initParam(submitUserName, nationCode) {
-  // var orgName = submitUserName ? encodeURIComponent(transfer($("#organization").val())) : '';
-  // var usernameInp = encodeURIComponent(transfer($("#username").val()));
-  // if (nationCode) {
-  //   usernameInp = nationCode + '-' + usernameInp;
-  // }
-  // var valueInp = $("#value").val();
-  // var verifycodeInp;
-  // if (!(typeof ($("#verificationCode").val()) == "undefined")) {
-  //   verifycodeInp = $("#verificationCode").val();
-  // }
-  // var search = window.location.search;
-  // if (isTwoFactorView) {
-  //   verifycodeInp = $("#twoFactorCode").val();
-  //   search = window.location.search ? window.location.search + "&step=twoFactor" : "?step=twoFactor";
-  // }
-  return {
-    orgName: process.env.HFS_ORG_NAME || undefined,
-    usernameInp: process.env.HFS_USERNAME || undefined,
-    valueInp: process.env.HFS_PASSWORD || undefined,
-    verifycodeInp: process.env.HFS_VERIFY_CODE_INP || undefined,
-    search: process.env.HFS_SEARCH || undefined,
-  };
-}
+global.Configuration = {
+  PUB_KEY: "",
+  LOGIN_URL: "",
+  LOGIN_USER_INFO: Object,
+  JSESSIONID: "",
+  UNISSO_V_C_S: "",
+  DP_SESSION_TOKEN: "",
+  MULTI_REGION_NAME: "",
+};
 
 function initLoginUserInfo() {
   return {
@@ -42,7 +28,8 @@ async function getPubKey() {
   const response = await axios.get(
     process.env.HFS_BASE_ADDRESS + process.env.HFS_EP_PUBKEY
   );
-  return response.data;
+
+  Configuration.PUB_KEY = response.data;
 }
 
 function getSecureRandom() {
@@ -52,18 +39,16 @@ function getSecureRandom() {
   for (var i = 0; i < arr.length; i++) {
     result = result + arr[i].toString(16);
   }
+
   return result;
 }
 
-async function main() {
-  // get publick key for user data encryption
-  const result = await getPubKey();
+function getLoginUserInfo() {
+  var loginUserInfo = initLoginUserInfo();
 
-  // encrypt user data with public key
-  var data = initLoginUserInfo();
-  if (result.enableEncrypt) {
-    var pubKey = rs.KEYUTIL.getKey(result.pubKey);
-    var valueEncode = encodeURIComponent(data.password);
+  if (Configuration.PUB_KEY.enableEncrypt) {
+    var pubKey = rs.KEYUTIL.getKey(Configuration.PUB_KEY.pubKey);
+    var valueEncode = encodeURIComponent(loginUserInfo.password);
     var encryptValue = "";
     for (var i = 0; i < valueEncode.length / 270; i++) {
       var currntValue = valueEncode.substr(i * 270, 270);
@@ -75,65 +60,97 @@ async function main() {
       encryptValue = encryptValue == "" ? "" : encryptValue + "00000001";
       encryptValue = encryptValue + rs.hextob64(encryptValueCurrent);
     }
-    data.password = encryptValue + result.version;
+    loginUserInfo.password = encryptValue + Configuration.PUB_KEY.version;
   }
 
-  // validate user
-  var URL = "/unisso/v2/validateUser.action";
-  if (result.enableEncrypt) {
-    URL =
+  Configuration.LOGIN_USER_INFO = loginUserInfo;
+}
+
+function getLoginUrl() {
+  var url = "/unisso/v2/validateUser.action";
+  if (Configuration.PUB_KEY.enableEncrypt) {
+    url =
       "/unisso/v3/validateUser.action" +
       "?timeStamp=" +
-      result.timeStamp +
+      Configuration.PUB_KEY.timeStamp +
       "&nonce=" +
       getSecureRandom();
   }
 
-  var loginUserInfo = JSON.stringify(data);
+  Configuration.LOGIN_URL = url;
+}
 
+async function getJSessionId() {
   var axiosResult = await axios.get(
     process.env.HFS_BASE_ADDRESS +
       "/rest/pvms/web/publicapp/v1/download-qr-code?appType=3&sizeType=1"
   );
-  console.log(axiosResult);
 
-  var cookies = axiosResult.headers["set-cookie"][0];
+  Configuration.JSESSIONID =
+    axiosResult.headers["set-cookie"][0].split(";")[0] + ";";
+}
 
+async function getUniSSOToken() {
   axiosResult = await axios.post(
-    process.env.HFS_BASE_ADDRESS + URL,
-    loginUserInfo,
+    process.env.HFS_BASE_ADDRESS + Configuration.LOGIN_URL,
+    Configuration.LOGIN_USER_INFO,
     {
       headers: {
         "Content-Type": "application/json",
-        Cookie: cookies,
+        Cookie: Configuration.JSESSIONID,
       },
     }
   );
-  console.log(axiosResult);
 
-  cookies += "; " + axiosResult.headers["set-cookie"][0];
+  Configuration.UNISSO_V_C_S =
+    axiosResult.headers["set-cookie"][0].split(";")[0] + ";";
+
+  Configuration.MULTI_REGION_NAME = axiosResult.data.respMultiRegionName[1];
+}
+
+async function getDpSessionToken() {
+  var cookies;
 
   axiosResult = await axios
-    .get(
-      process.env.HFS_BASE_ADDRESS + axiosResult.data.respMultiRegionName[1],
-      {
-        headers: {
-          Cookie: cookies,
-        },
-        maxRedirects: 0,
-        redirect: "manual",
-      }
-    )
+    .get(process.env.HFS_BASE_ADDRESS + Configuration.MULTI_REGION_NAME, {
+      headers: {
+        Cookie: Configuration.JSESSIONID + Configuration.UNISSO_V_C_S,
+      },
+      maxRedirects: 0,
+      redirect: "manual",
+    })
     .catch((reason) => {
       if (reason.status == 302) {
-        cookies += "; " + reason.response.headers["set-cookie"][0];
+        cookies = reason.response.headers["set-cookie"][0];
       } else {
         console.log(reason);
       }
     });
 
-  // TODO: implement getPlansList
-  await getPlantsList();
+  Configuration.DP_SESSION_TOKEN = cookies.split(";")[0] + ";";
+}
+
+async function main() {
+  // get publick key for user data encryption
+  await getPubKey();
+
+  // get login user info
+  getLoginUserInfo();
+
+  // validate user
+  getLoginUrl();
+
+  // get JSESSIONID
+  await getJSessionId();
+
+  // get UNISSO_V_C_S
+  await getUniSSOToken();
+
+  // get dp-session token
+  await getDpSessionToken();
+
+  // get plants list
+  //await getPlantsList();
 }
 
 main();
