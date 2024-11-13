@@ -81,17 +81,17 @@ function getLoginUrl() {
 }
 
 async function getJSessionId() {
-  var axiosResult = await axios.get(
+  const response = await axios.get(
     process.env.HFS_BASE_ADDRESS +
       "/rest/pvms/web/publicapp/v1/download-qr-code?appType=3&sizeType=1"
   );
 
   Configuration.JSESSIONID =
-    axiosResult.headers["set-cookie"][0].split(";")[0] + ";";
+    response.headers["set-cookie"][0].split(";")[0] + ";";
 }
 
 async function getUniSSOToken() {
-  axiosResult = await axios.post(
+  const response = await axios.post(
     process.env.HFS_BASE_ADDRESS + Configuration.LOGIN_URL,
     Configuration.LOGIN_USER_INFO,
     {
@@ -103,15 +103,40 @@ async function getUniSSOToken() {
   );
 
   Configuration.UNISSO_V_C_S =
-    axiosResult.headers["set-cookie"][0].split(";")[0] + ";";
+    response.headers["set-cookie"][0].split(";")[0] + ";";
 
-  Configuration.MULTI_REGION_NAME = axiosResult.data.respMultiRegionName[1];
+  Configuration.MULTI_REGION_NAME = response.data.respMultiRegionName[1];
+}
+
+async function test() {
+  const response = await axios.post(
+    "https://uni004eu5.fusionsolar.huawei.com/rest/pvms/web/station/v1/station/station-list",
+    {
+      curPage: 1,
+      pageSize: 10,
+      gridConnectedTime: "",
+      queryTime: 1731452400000,
+      timeZone: 1,
+      sortId: "createTime",
+      sortDir: "DESC",
+      locale: "en_US",
+    },
+    {
+      headers: {
+        roarand: "TODO_UNDERSTAND_WHAT_IS_THIS",
+        Cookie:
+          "locale=en-us;" +
+          Configuration.JSESSIONID +
+          Configuration.DP_SESSION_TOKEN,
+      },
+    }
+  );
+
+  console.log(response);
 }
 
 async function getDpSessionToken() {
-  var cookies;
-
-  axiosResult = await axios
+  await axios
     .get(process.env.HFS_BASE_ADDRESS + Configuration.MULTI_REGION_NAME, {
       headers: {
         Cookie: Configuration.JSESSIONID + Configuration.UNISSO_V_C_S,
@@ -121,13 +146,12 @@ async function getDpSessionToken() {
     })
     .catch((reason) => {
       if (reason.status == 302) {
-        cookies = reason.response.headers["set-cookie"][0];
+        Configuration.DP_SESSION_TOKEN =
+          reason.response.headers["set-cookie"][0].split(";")[0] + ";";
       } else {
         console.log(reason);
       }
     });
-
-  Configuration.DP_SESSION_TOKEN = cookies.split(";")[0] + ";";
 }
 
 async function main() {
@@ -149,8 +173,7 @@ async function main() {
   // get dp-session token
   await getDpSessionToken();
 
-  // get plants list
-  //await getPlantsList();
+  await test();
 }
 
 main();
